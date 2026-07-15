@@ -1,0 +1,98 @@
+import re
+import requests
+from dotenv import load_dotenv
+from langchain_community.vectorstores import FAISS
+from langchain_mistralai import MistralAIEmbeddings
+from langchain_core.tools import create_retriever_tool
+from langchain.agents import create_agent
+load_dotenv()
+from langchain_community.document_loaders import PyPDFDirectoryLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+import os
+
+def filter_references(docs):
+    filtered = []
+    references_found = False
+
+    for doc in docs:
+        if references_found:
+            continue  # skip all pages after references started
+
+        # look for a line that's JUST "References" (not a random citation mention)
+        match = re.search(r"^\s*references\s*$", doc.page_content, re.IGNORECASE | re.MULTILINE)
+
+        if match:
+            # keep only the text before "References" on this page
+            doc.page_content = doc.page_content[:match.start()]
+            references_found = True
+
+        filtered.append(doc)
+
+    return filtered
+
+#Splitting the PDFs
+loader = PyPDFDirectoryLoader("C:\Academics\Rojgaar\langchain\selfProject1\pdfs")
+docs = loader.load()
+docs = filter_references(docs)
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size = 1000,
+    chunk_overlap = 150
+)
+chunks = splitter.split_documents(docs) #not split_text()so as to preserve metadata
+
+
+#Embedding into the vector store
+embeddings = MistralAIEmbeddings(model="mistral-embed")
+# vector_store = FAISS.from_documents(chunks, embedding=embeddings)
+# vector_store.save_local("faiss_index")
+if os.path.exists("faiss_index"):
+    vectorstore = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+else:
+    vectorstore = FAISS.from_documents(chunks, embeddings)
+    vectorstore.save_local("faiss_index")
+
+# for doc in docs:
+#     if "reference" in doc.page_content.lower():
+#         idx = doc.page_content.lower().find("reference")
+#         print(repr(doc.page_content[max(0,idx-50):idx+50]))
+results = vectorstore.similarity_search("What experimental results does this paper present about laser wake field acceleration?", k=1)
+
+for r in results:
+    print(r.metadata.get("page"), "-", r.page_content[:150])
+    print("---")
+
+retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+
+retriever_tool = create_retriever_tool(
+    retriever,
+    name="paper_search",
+    description="Search the loaded research paper(s) for relevant information to answer questions."
+)
+
+system_prompt = """You are a research assistant that helps users understand technical papers in plain, everyday language.
+
+RULES:
+1. Only use information from the paper_search tool results to answer questions. Never use outside knowledge, even if you know the topic.
+2. If the retrieved content doesn't contain enough information to answer the question, say so clearly instead of guessing or filling gaps with general knowledge.
+3. Explain things the way you would to a curious non-expert. Avoid jargon, and when a technical term is unavoidable, briefly explain what it means in plain words.
+4. Every claim you make must be followed by a citation showing where it came from, in this format: (Source: page X). Use the page number from the retrieved chunk's metadata.
+5. If different parts of your answer come from different pages, cite each part separately rather than one citation at the end.
+6. Keep answers concise and readable — short paragraphs or bullet points rather than dense technical blocks.
+
+Example of the style you should use:
+"Laser wakefield acceleration works by using an intense laser pulse to create a kind of 'wave' in plasma that particles can ride, similar to a surfer catching an ocean wave (Source: page 2). This lets particles gain energy over a much shorter distance than traditional accelerators (Source: page 3)."
+"""
+
+agent = create_agent(
+    model="mistral-small-latest",
+    tools=[retriever_tool],
+    system_prompt=system_prompt,
+)
+
+response = agent.invoke({
+    "messages": [{"role": "user", "content": "What experimental results does this paper present about laser wake field acceleration?"}]
+})
+
+print(response["messages"][-1].content)
+

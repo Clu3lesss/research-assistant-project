@@ -1,0 +1,13 @@
+# Project dependencies — pin versions as needed
+langchain
+langchain-community
+langchain-core
+langchain-mistralai
+langchain-text-splitters
+python-dotenv
+faiss-cpu
+numpy
+pypdf
+
+# Optional (only if you use them):
+# torch

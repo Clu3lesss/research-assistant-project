@@ -2,7 +2,6 @@ from dotenv import load_dotenv
 from langchain_community.vectorstores import FAISS
 
 from langchain_mistralai import MistralAIEmbeddings
-import os
 
 import config
 
@@ -11,11 +10,7 @@ def embed(chunks):
     embeddings = MistralAIEmbeddings(model=config.EMBEDDING_MODEL)
     # vector_store = FAISS.from_documents(chunks, embedding=embeddings)
     # vector_store.save_local("faiss_index")
-    if os.path.exists("faiss_index"):
-        vectorstore = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-    else:
-        vectorstore = FAISS.from_documents(chunks, embeddings)
-        vectorstore.save_local("faiss_index")
+    vectorstore = FAISS.from_documents(chunks, embeddings)
 
     # for doc in docs:
     #     if "reference" in doc.page_content.lower():

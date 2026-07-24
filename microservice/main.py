@@ -1,32 +1,48 @@
+#main.py
+
 from dotenv import load_dotenv
-import loaders
-import splitters
-import vectorsrtores
-import retriever
-import agents
+import uuid
+# import loaders
+# import splitters
+# import vectorsrtores
+# import retriever
+# import agents
+import research_project
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
+import os
+import tempfile
+
 load_dotenv()
-#load the documents
-#Path is default for the sake of testing
 
-def research_project(path= r"C:\Academics\Rojgaar\langchain\selfProject1\pdfs"):
-    #pass the path for the document in path but keep it unused because were using the default arguement here
-    docs = loaders.pdf_loading(path)
-
-    #converts the loaded text into chunks
-    chunks = splitters.docs_splitter(docs)
-
-    #Embed the chunks
-    vectorsrtore = vectorsrtores.embed(chunks)
-
-    retriever_tool = retriever.retriever(vectorsrtore)
-
-    #Retriever tool already called in agents. No need to call again. proceeding to make the agent directly
-    agent = agents.agent_creation(retriever_tool)
-
-    #Agent created. Wrap this in a function and return the agent to test in the final tests module
-    return agent
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_headers=["*"],
+    allow_methods=["*"],
+)
 
 
+@app.post("/upload")
+async def upload_pdf(file: UploadFile = File(...)):
+    doc_id = str(uuid.uuid4())
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+        print(f"Temp file exists: {os.path.exists(tmp_path)}, size: {os.path.getsize(tmp_path)}")
+
+    try:
+        research_project.final_loding(tmp_path, doc_id)
+    finally:
+        os.remove(tmp_path)  # original PDF still not kept, only its embeddings are
+
+    return {"doc_id": doc_id}
 
 
 
+@app.post("/ask")
+async def ask(question: str = Form(...), doc_id: str = Form(...)):
+    answer = research_project.invoke_agent(question, doc_id)
+    return {"answer": answer}

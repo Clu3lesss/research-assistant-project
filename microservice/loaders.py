@@ -1,4 +1,4 @@
-from langchain_community.document_loaders import PyPDFDirectoryLoader
+from langchain_community.document_loaders import PyPDFLoader
 import config
 import re
 
@@ -24,7 +24,7 @@ def filter_references(docs):
 
 #Splitting the PDFs
 def pdf_loading(path):
-    loader = PyPDFDirectoryLoader(path)
+    loader = PyPDFLoader(path)
     docs = loader.load()
     docs = filter_references(docs)
     return docs
